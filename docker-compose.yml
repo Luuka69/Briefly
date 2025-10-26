@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   backend:
     build:
@@ -19,15 +21,29 @@ services:
       - backend
     restart: unless-stopped
 
-# Uncomment and adjust the sample services below to integrate
-# your data pipelines or model-serving containers locally.
-#  scraper:
-#    build:
-#      context: ./pipelines/scraper
-#    command: ["npm", "run", "start"]
-#
-#  chatbot:
-#    build:
-#      context: ./pipelines/chatbot
-#    ports:
-#      - "5000:5000"
+  rag-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-agent-service
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./.env
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama
+    container_name: ollama-service
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    command: >
+      sh -c "ollama serve & ollama pull ${OLLAMA_MODEL} & wait"
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
