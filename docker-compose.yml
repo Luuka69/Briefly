@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: briefly-backend
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: briefly-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+# Uncomment and adjust the sample services below to integrate
+# your data pipelines or model-serving containers locally.
+#  scraper:
+#    build:
+#      context: ./pipelines/scraper
+#    command: ["npm", "run", "start"]
+#
+#  chatbot:
+#    build:
+#      context: ./pipelines/chatbot
+#    ports:
+#      - "5000:5000"
