@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  # Our RAG Agent API Service
+  rag-agent:
+    build: .
+    container_name: rag-agent-service
+    ports:
+      - "8000:8000"
+    # Mount the local .env file into the container
+    env_file:
+      - .env
+    depends_on:
+      - ollama
+    # Ollama is available at http://ollama:11434 from within the container
+    # so we set this in main.py
+    
+  # The Ollama LLM Service
+  ollama:
+    image: ollama/ollama
+    container_name: ollama-service
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # This command pulls the model specified in the .env file when the container starts
+    command: sh -c "ollama serve & ollama pull ${OLLAMA_MODEL} & wait"
+
+volumes:
+  ollama_data: # Persists the downloaded Ollama models
