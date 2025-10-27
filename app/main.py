@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from langchain_ollama.llms import Ollama
+from langchain_ollama import OllamaLLM
 
 # Import the pre-loaded vector_store instance from our service
 from .services.vector_store import vector_store
@@ -35,7 +35,12 @@ app = FastAPI(
 # This part runs once when the server starts up
 try:
     # Initialize the LLM from Ollama
-    llm = Ollama(model=os.getenv("OLLAMA_MODEL", "llama2"), temperature=0.1)
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama-service:11434")
+    llm = OllamaLLM(
+        model=os.getenv("OLLAMA_MODEL", "mistral"),
+        base_url=ollama_base_url,
+        temperature=0.1,
+    )
 
     # Define the strict prompt template
     prompt_template = """

@@ -1,7 +1,7 @@
 import { 
   Plus, Send, MessageSquare, FolderOpen, Settings, 
   Share2, LogOut, DoorOpen, ExternalLink, ChevronLeft, 
-  ChevronRight, TrendingUp, Menu, Home, ArrowLeft
+  ChevronRight, TrendingUp, Menu, Home, ArrowLeft, Loader2
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
@@ -13,11 +13,17 @@ import { Badge } from './ui/badge';
 import { Card } from './ui/card';
 import { BrieflyLogo } from './BrieflyLogo';
 
+interface Source {
+  title: string;
+  link?: string;
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  sources?: string[];
+  sources?: Source[];
+  status?: 'ready' | 'loading' | 'error';
 }
 
 interface Chat {
@@ -30,6 +36,8 @@ interface ChatbotPageProps {
   onNavigate: (page: string) => void;
 }
 
+const API_BASE_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:4000';
+
 export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
@@ -40,9 +48,11 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
       id: '1',
       role: 'assistant',
       content: 'Hello! I\'m Briefly, your AI press agent. I can summarize the latest news, answer questions about current events, or brief you on specific topics. What would you like to know?',
+      status: 'ready',
     }
   ]);
   const [showSources, setShowSources] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const previousChats: Chat[] = [
@@ -67,27 +77,90 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
     }
   }, [messages]);
 
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
+  const submitQuestion = async (question: string, category = 'All') => {
+    if (!question || isSending) return;
+
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: inputValue,
+      content: trimmedQuestion,
+      status: 'ready',
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setInputValue('');
+    const placeholderId = `assistant-${Date.now() + 1}`;
+    const loadingMessage: Message = {
+      id: placeholderId,
+      role: 'assistant',
+      content: 'Thinking...',
+      status: 'loading',
+    };
 
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `Here's a summary based on your query about "${inputValue}": Recent developments show significant progress in this area. Multiple trusted sources have reported on this topic, with key highlights including important updates and expert analysis. This information has been verified across major news outlets including Reuters, BBC, and The Guardian.`,
-        sources: ['Reuters', 'BBC News', 'The Guardian'],
-      };
-      setMessages(prev => [...prev, assistantMessage]);
-    }, 1000);
+    setMessages(prev => [...prev, userMessage, loadingMessage]);
+    setInputValue('');
+    setIsSending(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL.replace(/\/$/, '')}/chat/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: trimmedQuestion, category }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? 'The agent could not process your request.');
+      }
+
+      const sources = Array.isArray(payload?.sources)
+        ? payload.sources.map((source: any, index: number) => ({
+            title: typeof source?.title === 'string' && source.title.trim().length > 0
+              ? source.title
+              : `Source ${index + 1}`,
+            link: typeof source?.link === 'string' && source.link.trim().length > 0
+              ? source.link
+              : undefined,
+          }))
+        : undefined;
+
+      const answer = typeof payload?.answer === 'string' && payload.answer.trim().length > 0
+        ? payload.answer.trim()
+        : 'The agent did not provide an answer.';
+
+      setMessages(prev => prev.map(message => (
+        message.id === placeholderId
+          ? { ...message, content: answer, sources, status: 'ready' }
+          : message
+      )));
+
+      if (sources && sources.length > 0) {
+        setShowSources(true);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+      setMessages(prev => prev.map(message => (
+        message.id === placeholderId
+          ? {
+              ...message,
+              content: `⚠️ ${errorMessage}`,
+              status: 'error',
+            }
+          : message
+      )));
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleSendMessage = () => {
+    submitQuestion(inputValue);
+  };
+
+  const handleQuickTopic = (topic: string) => {
+    submitQuestion(topic);
   };
 
   const handleNewChat = () => {
@@ -96,8 +169,12 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
         id: '1',
         role: 'assistant',
         content: 'Hello! I\'m Briefly, your AI press agent. I can summarize the latest news, answer questions about current events, or brief you on specific topics. What would you like to know?',
+        status: 'ready',
       }
     ]);
+    setInputValue('');
+    setShowSources(false);
+    setIsSending(false);
   };
 
   return (
@@ -310,18 +387,40 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
                     </div>
                   </Avatar>
                   <div className="space-y-2">
-                    <div className={`rounded-2xl px-4 py-3 ${
-                      message.role === 'user' 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-slate-100 text-slate-900'
+                    <div className={`rounded-2xl px-4 py-3 border ${
+                      message.role === 'user'
+                        ? 'bg-blue-600 text-white border-transparent'
+                        : message.status === 'error'
+                          ? 'bg-red-50 text-red-700 border-red-200'
+                          : 'bg-slate-100 text-slate-900 border-transparent'
                     }`}>
-                      {message.content}
+                      <div className="flex items-center gap-2">
+                        {message.role === 'assistant' && message.status === 'loading' && (
+                          <Loader2 size={16} className="animate-spin text-slate-500" />
+                        )}
+                        <span>{message.content}</span>
+                      </div>
                     </div>
-                    {message.sources && showSources && (
+                    {message.sources && message.sources.length > 0 && showSources && (
                       <div className="flex flex-wrap gap-2 mt-2">
                         {message.sources.map((source, idx) => (
-                          <Badge key={idx} variant="outline" className="text-xs border-blue-200 text-blue-700 bg-blue-50">
-                            {source}
+                          <Badge 
+                            key={`${source.title}-${idx}`} 
+                            variant="outline" 
+                            className="text-xs border-blue-200 text-blue-700 bg-blue-50 hover:border-blue-400 transition-colors"
+                          >
+                            {source.link ? (
+                              <a
+                                href={source.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:underline"
+                              >
+                                {source.title}
+                              </a>
+                            ) : (
+                              source.title
+                            )}
                           </Badge>
                         ))}
                       </div>
@@ -340,15 +439,17 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
               <Input
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                onKeyDown={(e) => e.key === 'Enter' && !isSending && handleSendMessage()}
                 placeholder="Ask about the latest news..."
                 className="flex-1 border-slate-300"
+                disabled={isSending}
               />
               <Button 
                 onClick={handleSendMessage}
                 className="bg-blue-600 hover:bg-blue-700"
+                disabled={isSending || !inputValue.trim()}
               >
-                <Send size={18} />
+                {isSending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               </Button>
             </div>
             <p className="text-xs text-slate-400 mt-2 text-center">
@@ -393,6 +494,15 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
                 <Card 
                   key={idx}
                   className="p-3 border-slate-200 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer"
+                  onClick={() => handleQuickTopic(topic)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleQuickTopic(topic);
+                    }
+                  }}
                 >
                   <div className="text-sm text-slate-700">{topic}</div>
                 </Card>

@@ -1,21 +1,21 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 # FastAPI Web Server
-fastapi
-uvicorn[standard]
+fastapi==0.115.0
+uvicorn[standard]==0.31.0
 
-# --- LangChain Compatible Stack (Loosened for resolution) ---
-langchain
-langchain-community
-langchain-core
-langchain-ollama
+# --- LangChain Compatible Stack ---
+langchain==0.3.9
+langchain-community==0.3.9
+langchain-ollama==0.3.2
 
 # Vector Store and Embeddings
-faiss-cpu
-sentence-transformers
+faiss-cpu==1.8.0
+sentence-transformers==3.3.1
 
 # Data Handling and Environment Variables
-pandas
-python-dotenv
+pandas==2.2.3
+python-dotenv==1.0.1
 
-# Core dependencies (Loosened for compatibility)
-numpy
-torch
+# Core dependencies (CPU builds)
+numpy==1.26.4
+torch==2.5.1+cpu
