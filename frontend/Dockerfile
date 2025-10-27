@@ -4,6 +4,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 ENV NODE_ENV=development
+ARG VITE_BACKEND_URL=http://backend:4000
+ENV VITE_BACKEND_URL=${VITE_BACKEND_URL}
 
 COPY package*.json ./
 RUN npm ci

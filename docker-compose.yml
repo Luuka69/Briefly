@@ -14,6 +14,8 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        VITE_BACKEND_URL: http://localhost:4000
     container_name: briefly-frontend
     ports:
       - "5173:80"
@@ -40,10 +42,6 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - ollama_data:/root/.ollama
-    command: >
-      sh -c "ollama serve & ollama pull ${OLLAMA_MODEL} & wait"
+      - C:\Users\malek\.ollama:/root/.ollama
+    command: serve
     restart: unless-stopped
-
-volumes:
-  ollama_data:

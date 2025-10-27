@@ -8,7 +8,9 @@ WORKDIR /code
 COPY ./requirements.txt /code/requirements.txt
 
 # Install dependencies
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
+ENV PIP_DEFAULT_TIMEOUT=1000 \
+    PIP_NO_CACHE_DIR=1
+RUN pip install --upgrade pip && pip install --upgrade -r /code/requirements.txt
 
 # --- Hugging Face Transformer Cache ---
 # Pre-download the embedding model during the build process.
