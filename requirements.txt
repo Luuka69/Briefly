@@ -1,0 +1,21 @@
+# FastAPI Web Server
+fastapi
+uvicorn[standard]
+
+# --- LangChain Compatible Stack (Loosened for resolution) ---
+langchain
+langchain-community
+langchain-core
+langchain-ollama
+
+# Vector Store and Embeddings
+faiss-cpu
+sentence-transformers
+
+# Data Handling and Environment Variables
+pandas
+python-dotenv
+
+# Core dependencies (Loosened for compatibility)
+numpy
+torch
