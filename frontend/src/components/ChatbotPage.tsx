@@ -1,7 +1,7 @@
 import { 
   Plus, Send, MessageSquare, FolderOpen, Settings, 
   Share2, LogOut, DoorOpen, ExternalLink, ChevronLeft, 
-  ChevronRight, TrendingUp, Menu, Home, ArrowLeft, Loader2
+  ChevronRight, TrendingUp, Menu, Home, ArrowLeft, Loader2, Mic // <-- Mic icon added
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
@@ -12,6 +12,7 @@ import { Avatar } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { Card } from './ui/card';
 import { BrieflyLogo } from './BrieflyLogo';
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition'; // <-- New hook imported
 
 interface Source {
   title: string;
@@ -54,6 +55,9 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
   const [showSources, setShowSources] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  // <-- Initialize the speech recognition hook
+  const { isListening, transcript, hasRecognitionSupport, toggleListening } = useSpeechRecognition();
 
   const previousChats: Chat[] = [
     { id: '1', title: 'Morning Brief', lastMessage: 'Latest tech news' },
@@ -76,6 +80,13 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // <-- New effect to sync voice transcript with input field
+  useEffect(() => {
+    if (transcript) {
+      setInputValue(transcript);
+    }
+  }, [transcript]);
 
   const submitQuestion = async (question: string, category = 'All') => {
     if (!question || isSending) return;
@@ -435,15 +446,31 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
         {/* Input Area */}
         <div className="border-t border-slate-200 p-4 bg-white">
           <div className="max-w-3xl mx-auto">
+            {/* THIS IS THE MODIFIED SECTION */}
             <div className="flex space-x-2">
               <Input
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !isSending && handleSendMessage()}
-                placeholder="Ask about the latest news..."
+                placeholder={isListening ? "Listening..." : "Ask about the latest news..."}
                 className="flex-1 border-slate-300"
                 disabled={isSending}
               />
+
+              {/* NEW MICROPHONE BUTTON */}
+              {hasRecognitionSupport && (
+                <Button
+                  type="button"
+                  variant={isListening ? "destructive" : "outline"}
+                  size="icon"
+                  onClick={toggleListening}
+                  disabled={isSending}
+                  className={isListening ? "text-white animate-pulse" : "border-slate-300"}
+                >
+                  <Mic size={18} />
+                </Button>
+              )}
+
               <Button 
                 onClick={handleSendMessage}
                 className="bg-blue-600 hover:bg-blue-700"
