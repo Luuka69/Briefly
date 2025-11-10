@@ -23,6 +23,11 @@
 
 Stop the stack with `./scripts/dev.sh down` or `.\scripts\dev.ps1 down`.
 
+## Sentiment Analysis
+
+- The backend now exposes `POST /sentiment/analyze` for lightweight tone scoring using the `sentiment` npm package. Send `{ "text": "..." }` and the API responds with the label (`positive`, `neutral`, or `negative`), score, comparative value, and contributing tokens.
+- The chatbot UI automatically calls this endpoint for every user and assistant message, surfacing a badge, score, and highlighted keywords so you can gauge the tone of each exchange at a glance.
+
 ## Pipelines & Models
 
 Extend `docker-compose.yml` with additional services (scrapers, model servers, etc.). Sample blocks are commented in the file—duplicate and adjust them to point at your pipeline repositories or container images.

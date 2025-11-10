@@ -1,12 +1,22 @@
 # .dockerignore file
 
-# Ignore Python virtual environment
-.venv/
+# Ignore VCS and editor cruft
+.git/
+.vscode/
+.idea/
 
-# Ignore Python cache files
+# Ignore virtual environments and caches
+.venv/
 __pycache__/
 *.pyc
 
-# Ignore IDE/editor specific files
-.vscode/
-.idea/
+# Ignore dependency directories that don't need to be sent to the rag-agent build
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+backend/node_modules/
+backend/dist/
+
+# Ignore local build artefacts/logs
+*.log

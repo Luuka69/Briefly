@@ -1,10 +1,12 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import Sentiment from 'sentiment';
 
 const app = express();
 const port = process.env.PORT ?? 4000;
 const ragAgentBaseUrl = process.env.RAG_AGENT_URL ?? 'http://localhost:8000';
+const sentiment = new Sentiment();
 
 app.use(cors());
 app.use(express.json());
@@ -43,6 +45,27 @@ app.post('/chat/ask', async (req, res) => {
     console.error('Error contacting RAG agent:', message);
     return res.status(502).json({ error: 'Failed to reach RAG agent.', message });
   }
+});
+
+app.post('/sentiment/analyze', (req, res) => {
+  const { text } = req.body ?? {};
+
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ error: 'Text is required.' });
+  }
+
+  const analysis = sentiment.analyze(text);
+  const label =
+    analysis.score > 1 ? 'positive' : analysis.score < -1 ? 'negative' : 'neutral';
+
+  return res.json({
+    label,
+    score: analysis.score,
+    comparative: analysis.comparative,
+    positive: analysis.positive,
+    negative: analysis.negative,
+    tokens: analysis.tokens,
+  });
 });
 
 app.listen(port, () => {

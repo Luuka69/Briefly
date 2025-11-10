@@ -1,9 +1,10 @@
 import { 
   Plus, Send, MessageSquare, FolderOpen, Settings, 
   Share2, LogOut, DoorOpen, ExternalLink, ChevronLeft, 
-  ChevronRight, TrendingUp, Menu, Home, ArrowLeft, Loader2, Mic // <-- Mic icon added
+  ChevronRight, TrendingUp, Menu, Home, ArrowLeft, Loader2, Mic,
+  Smile, Meh, Frown
 } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
@@ -19,12 +20,32 @@ interface Source {
   link?: string;
 }
 
+type SentimentLabel = 'positive' | 'neutral' | 'negative';
+
+interface SentimentResult {
+  label: SentimentLabel;
+  score: number;
+  comparative: number;
+  positive: string[];
+  negative: string[];
+  tokens?: string[];
+}
+
+type SentimentVisual = {
+  text: string;
+  description: string;
+  className: string;
+  Icon: typeof Smile;
+};
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   sources?: Source[];
   status?: 'ready' | 'loading' | 'error';
+  sentiment?: SentimentResult;
+  sentimentError?: string;
 }
 
 interface Chat {
@@ -38,6 +59,32 @@ interface ChatbotPageProps {
 }
 
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:4000';
+const GREETING_MESSAGE = `Hello! I'm Briefly, your AI press agent. I can summarize the latest news, answer questions about current events, or brief you on specific topics. What would you like to know?`;
+const SENTIMENT_KEYWORD_LIMIT = 3;
+
+const SENTIMENT_VISUALS: Record<SentimentLabel, SentimentVisual> = {
+  positive: {
+    text: 'Positive',
+    description: 'Upbeat tone',
+    className: 'border-green-200 text-green-700 bg-green-50',
+    Icon: Smile,
+  },
+  neutral: {
+    text: 'Neutral',
+    description: 'Even tone',
+    className: 'border-slate-200 text-slate-700 bg-slate-50',
+    Icon: Meh,
+  },
+  negative: {
+    text: 'Negative',
+    description: 'Critical tone',
+    className: 'border-red-200 text-red-700 bg-red-50',
+    Icon: Frown,
+  },
+};
+
+const getSentimentVisual = (label: SentimentLabel): SentimentVisual =>
+  SENTIMENT_VISUALS[label] ?? SENTIMENT_VISUALS.neutral;
 
 export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -48,16 +95,56 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
     {
       id: '1',
       role: 'assistant',
-      content: 'Hello! I\'m Briefly, your AI press agent. I can summarize the latest news, answer questions about current events, or brief you on specific topics. What would you like to know?',
+      content: GREETING_MESSAGE,
       status: 'ready',
     }
   ]);
   const [showSources, setShowSources] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const apiBaseUrl = API_BASE_URL.replace(/\/$/, '');
   
   // <-- Initialize the speech recognition hook
   const { isListening, transcript, hasRecognitionSupport, toggleListening } = useSpeechRecognition();
+
+  const analyzeSentimentForText = useCallback(
+    async (messageId: string, text: string) => {
+      const trimmed = text?.trim();
+      if (!trimmed) return;
+
+      try {
+        const response = await fetch(`${apiBaseUrl}/sentiment/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: trimmed }),
+        });
+
+        const result = (await response.json().catch(() => null)) as SentimentResult | null;
+        if (!response.ok || !result) {
+          throw new Error(result?.label ?? 'Unable to analyze sentiment.');
+        }
+
+        setMessages(prev =>
+          prev.map(message =>
+            message.id === messageId
+              ? { ...message, sentiment: result, sentimentError: undefined }
+              : message
+          ),
+        );
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : 'Sentiment analysis failed.';
+        setMessages(prev =>
+          prev.map(message =>
+            message.id === messageId
+              ? { ...message, sentiment: undefined, sentimentError: errorMessage }
+              : message
+          ),
+        );
+      }
+    },
+    [apiBaseUrl, setMessages],
+  );
 
   const previousChats: Chat[] = [
     { id: '1', title: 'Morning Brief', lastMessage: 'Latest tech news' },
@@ -88,6 +175,11 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
     }
   }, [transcript]);
 
+  useEffect(() => {
+    void analyzeSentimentForText('1', GREETING_MESSAGE);
+    // analyze the greeting once on mount
+  }, [analyzeSentimentForText]);
+
   const submitQuestion = async (question: string, category = 'All') => {
     if (!question || isSending) return;
 
@@ -110,11 +202,12 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
     };
 
     setMessages(prev => [...prev, userMessage, loadingMessage]);
+    void analyzeSentimentForText(userMessage.id, trimmedQuestion);
     setInputValue('');
     setIsSending(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL.replace(/\/$/, '')}/chat/ask`, {
+      const response = await fetch(`${apiBaseUrl}/chat/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: trimmedQuestion, category }),
@@ -143,9 +236,18 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
 
       setMessages(prev => prev.map(message => (
         message.id === placeholderId
-          ? { ...message, content: answer, sources, status: 'ready' }
+          ? {
+              ...message,
+              content: answer,
+              sources,
+              status: 'ready',
+              sentiment: undefined,
+              sentimentError: undefined,
+            }
           : message
       )));
+
+      void analyzeSentimentForText(placeholderId, answer);
 
       if (sources && sources.length > 0) {
         setShowSources(true);
@@ -158,6 +260,8 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
               ...message,
               content: `⚠️ ${errorMessage}`,
               status: 'error',
+              sentiment: undefined,
+              sentimentError: 'Sentiment unavailable while the agent encountered an error.',
             }
           : message
       )));
@@ -179,13 +283,14 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
       {
         id: '1',
         role: 'assistant',
-        content: 'Hello! I\'m Briefly, your AI press agent. I can summarize the latest news, answer questions about current events, or brief you on specific topics. What would you like to know?',
+        content: GREETING_MESSAGE,
         status: 'ready',
       }
     ]);
     setInputValue('');
     setShowSources(false);
     setIsSending(false);
+    void analyzeSentimentForText('1', GREETING_MESSAGE);
   };
 
   return (
@@ -389,57 +494,106 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
           className="flex-1 overflow-y-auto px-4 py-8"
         >
           <div className="max-w-3xl mx-auto space-y-6">
-            {messages.map((message) => (
-              <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`flex space-x-3 max-w-[80%] ${message.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-                  <Avatar className={`w-8 h-8 flex-shrink-0 ${message.role === 'assistant' ? 'bg-blue-600' : 'bg-slate-700'}`}>
-                    <div className="w-full h-full flex items-center justify-center text-white text-sm">
-                      {message.role === 'assistant' ? 'B' : 'U'}
-                    </div>
-                  </Avatar>
-                  <div className="space-y-2">
-                    <div className={`rounded-2xl px-4 py-3 border ${
-                      message.role === 'user'
-                        ? 'bg-blue-600 text-white border-transparent'
-                        : message.status === 'error'
-                          ? 'bg-red-50 text-red-700 border-red-200'
-                          : 'bg-slate-100 text-slate-900 border-transparent'
-                    }`}>
-                      <div className="flex items-center gap-2">
-                        {message.role === 'assistant' && message.status === 'loading' && (
-                          <Loader2 size={16} className="animate-spin text-slate-500" />
-                        )}
-                        <span>{message.content}</span>
+            {messages.map((message) => {
+              const sentimentVisual = message.sentiment
+                ? getSentimentVisual(message.sentiment.label)
+                : null;
+              const SentimentIcon = sentimentVisual?.Icon;
+              const positiveKeywords = message.sentiment?.positive?.slice(0, SENTIMENT_KEYWORD_LIMIT) ?? [];
+              const negativeKeywords = message.sentiment?.negative?.slice(0, SENTIMENT_KEYWORD_LIMIT) ?? [];
+
+              return (
+                <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`flex space-x-3 max-w-[80%] ${message.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                    <Avatar className={`w-8 h-8 flex-shrink-0 ${message.role === 'assistant' ? 'bg-blue-600' : 'bg-slate-700'}`}>
+                      <div className="w-full h-full flex items-center justify-center text-white text-sm">
+                        {message.role === 'assistant' ? 'B' : 'U'}
                       </div>
-                    </div>
-                    {message.sources && message.sources.length > 0 && showSources && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {message.sources.map((source, idx) => (
-                          <Badge 
-                            key={`${source.title}-${idx}`} 
-                            variant="outline" 
-                            className="text-xs border-blue-200 text-blue-700 bg-blue-50 hover:border-blue-400 transition-colors"
-                          >
-                            {source.link ? (
-                              <a
-                                href={source.link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="hover:underline"
-                              >
-                                {source.title}
-                              </a>
-                            ) : (
-                              source.title
-                            )}
-                          </Badge>
-                        ))}
+                    </Avatar>
+                    <div className="space-y-2">
+                      <div className={`rounded-2xl px-4 py-3 border ${
+                        message.role === 'user'
+                          ? 'bg-blue-600 text-white border-transparent'
+                          : message.status === 'error'
+                            ? 'bg-red-50 text-red-700 border-red-200'
+                            : 'bg-slate-100 text-slate-900 border-transparent'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          {message.role === 'assistant' && message.status === 'loading' && (
+                            <Loader2 size={16} className="animate-spin text-slate-500" />
+                          )}
+                          <span>{message.content}</span>
+                        </div>
                       </div>
-                    )}
+
+                      {message.sentiment && sentimentVisual && (
+                        <div className="mt-3 space-y-1">
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                            <Badge
+                              variant="outline"
+                              className={`uppercase tracking-wide ${sentimentVisual.className}`}
+                            >
+                              {SentimentIcon && <SentimentIcon size={12} />}
+                              {sentimentVisual.text}
+                            </Badge>
+                            <span>
+                              Score {message.sentiment.score >= 0 ? '+' : ''}
+                              {message.sentiment.score} ({message.sentiment.comparative.toFixed(2)} avg)
+                            </span>
+                            <span className="text-slate-400">{sentimentVisual.description}</span>
+                          </div>
+                          {(positiveKeywords.length > 0 || negativeKeywords.length > 0) && (
+                            <div className="flex flex-wrap gap-4 text-[11px]">
+                              {positiveKeywords.length > 0 && (
+                                <span className="text-green-600">
+                                  + {positiveKeywords.join(', ')}
+                                </span>
+                              )}
+                              {negativeKeywords.length > 0 && (
+                                <span className="text-red-600">
+                                  - {negativeKeywords.join(', ')}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!message.sentiment && message.sentimentError && (
+                        <p className="text-[11px] text-amber-600 mt-3">
+                          Sentiment unavailable: {message.sentimentError}
+                        </p>
+                      )}
+
+                      {message.sources && message.sources.length > 0 && showSources && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {message.sources.map((source, idx) => (
+                            <Badge 
+                              key={`${source.title}-${idx}`} 
+                              variant="outline" 
+                              className="text-xs border-blue-200 text-blue-700 bg-blue-50 hover:border-blue-400 transition-colors"
+                            >
+                              {source.link ? (
+                                <a
+                                  href={source.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="hover:underline"
+                                >
+                                  {source.title}
+                                </a>
+                              ) : (
+                                source.title
+                              )}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
