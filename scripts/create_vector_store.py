@@ -12,7 +12,10 @@ from langchain_community.vectorstores import FAISS
 load_dotenv()
 
 # --- Configuration ---
-CSV_DATA_PATH = os.path.join('data', 'articles_sample.csv')
+CSV_DATA_SOURCES = [
+    os.path.join('data', 'articles_sample.csv'),
+    os.path.join('data', 'articles_full_11_10_2025.csv'),
+]
 FAISS_INDEX_PATH = os.path.join('data', 'faiss_index_with_category')
 EMBEDDING_MODEL_NAME = 'all-MiniLM-L6-v2'
 
@@ -24,12 +27,21 @@ def create_vector_store():
     print('--- Starting the Indexing Process ---')
 
     # 1. Load Data from CSV
-    try:
-        df = pd.read_csv(CSV_DATA_PATH)
-        print(f"[INFO] Successfully loaded {len(df)} articles from '{CSV_DATA_PATH}'.")
-    except FileNotFoundError:
-        print(f"[ERROR] The file '{CSV_DATA_PATH}' was not found.")
+    dataframes = []
+    for path in CSV_DATA_SOURCES:
+        if not os.path.exists(path):
+            print(f"[WARN] Skipping missing dataset '{path}'.")
+            continue
+        df = pd.read_csv(path)
+        print(f"[INFO] Loaded {len(df)} articles from '{path}'.")
+        dataframes.append(df)
+
+    if not dataframes:
+        print("[ERROR] No datasets were found; ensure CSV files exist.")
         return
+
+    df = pd.concat(dataframes, ignore_index=True)
+    print(f"[INFO] Combined dataset contains {len(df)} rows.")
 
     # 2. Prepare Documents
     if 'full_content' in df.columns and 'category' in df.columns:

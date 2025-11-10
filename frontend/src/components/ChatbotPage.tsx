@@ -194,12 +194,14 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
 
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) return;
+    const languageToSend = selectedLanguage;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
       content: trimmedQuestion,
       status: 'ready',
+      language: languageToSend,
     };
 
     const placeholderId = `assistant-${Date.now() + 1}`;
@@ -208,6 +210,7 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
       role: 'assistant',
       content: 'Thinking...',
       status: 'loading',
+      language: languageToSend,
     };
 
     setMessages(prev => [...prev, userMessage, loadingMessage]);
@@ -282,11 +285,11 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
   };
 
   const handleSendMessage = () => {
-    submitQuestion(inputValue, 'All', selectedLanguage);
+    submitQuestion(inputValue);
   };
 
   const handleQuickTopic = (topic: string) => {
-    submitQuestion(topic, 'All', selectedLanguage);
+    submitQuestion(topic);
   };
 
   const handleNewChat = () => {
