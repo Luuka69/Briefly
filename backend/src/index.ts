@@ -16,17 +16,22 @@ app.get('/health', (_req, res) => {
 });
 
 app.post('/chat/ask', async (req, res) => {
-  const { question, category = 'All' } = req.body ?? {};
+  const { question, category = 'All', language = 'english' } = req.body ?? {};
 
   if (!question || typeof question !== 'string') {
     return res.status(400).json({ error: 'Question is required.' });
+  }
+  const normalizedLanguage =
+    typeof language === 'string' ? language.toLowerCase() : 'english';
+  if (!['english', 'tunisian'].includes(normalizedLanguage)) {
+    return res.status(400).json({ error: 'Language must be english or tunisian.' });
   }
 
   try {
     const response = await fetch(`${ragAgentBaseUrl.replace(/\/$/, '')}/ask`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, category }),
+      body: JSON.stringify({ question, category, language: normalizedLanguage }),
     });
 
     if (!response.ok) {

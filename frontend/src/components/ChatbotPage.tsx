@@ -38,6 +38,8 @@ type SentimentVisual = {
   Icon: typeof Smile;
 };
 
+type SupportedLanguage = 'english' | 'tunisian';
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -46,6 +48,7 @@ interface Message {
   status?: 'ready' | 'loading' | 'error';
   sentiment?: SentimentResult;
   sentimentError?: string;
+  language?: SupportedLanguage;
 }
 
 interface Chat {
@@ -61,6 +64,10 @@ interface ChatbotPageProps {
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:4000';
 const GREETING_MESSAGE = `Hello! I'm Briefly, your AI press agent. I can summarize the latest news, answer questions about current events, or brief you on specific topics. What would you like to know?`;
 const SENTIMENT_KEYWORD_LIMIT = 3;
+const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
+  english: 'English',
+  tunisian: 'Tunisian',
+};
 
 const SENTIMENT_VISUALS: Record<SentimentLabel, SentimentVisual> = {
   positive: {
@@ -97,12 +104,14 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
       role: 'assistant',
       content: GREETING_MESSAGE,
       status: 'ready',
+      language: 'english',
     }
   ]);
   const [showSources, setShowSources] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const apiBaseUrl = API_BASE_URL.replace(/\/$/, '');
+  const [selectedLanguage, setSelectedLanguage] = useState<SupportedLanguage>('english');
   
   // <-- Initialize the speech recognition hook
   const { isListening, transcript, hasRecognitionSupport, toggleListening } = useSpeechRecognition();
@@ -210,7 +219,7 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
       const response = await fetch(`${apiBaseUrl}/chat/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: trimmedQuestion, category }),
+        body: JSON.stringify({ question: trimmedQuestion, category, language: languageToSend }),
       });
 
       const payload = await response.json().catch(() => ({}));
@@ -243,6 +252,7 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
               status: 'ready',
               sentiment: undefined,
               sentimentError: undefined,
+              language: languageToSend,
             }
           : message
       )));
@@ -262,6 +272,7 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
               status: 'error',
               sentiment: undefined,
               sentimentError: 'Sentiment unavailable while the agent encountered an error.',
+              language: languageToSend,
             }
           : message
       )));
@@ -271,11 +282,11 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
   };
 
   const handleSendMessage = () => {
-    submitQuestion(inputValue);
+    submitQuestion(inputValue, 'All', selectedLanguage);
   };
 
   const handleQuickTopic = (topic: string) => {
-    submitQuestion(topic);
+    submitQuestion(topic, 'All', selectedLanguage);
   };
 
   const handleNewChat = () => {
@@ -285,6 +296,7 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
         role: 'assistant',
         content: GREETING_MESSAGE,
         status: 'ready',
+        language: 'english',
       }
     ]);
     setInputValue('');
@@ -518,13 +530,21 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
                             ? 'bg-red-50 text-red-700 border-red-200'
                             : 'bg-slate-100 text-slate-900 border-transparent'
                       }`}>
-                        <div className="flex items-center gap-2">
-                          {message.role === 'assistant' && message.status === 'loading' && (
-                            <Loader2 size={16} className="animate-spin text-slate-500" />
-                          )}
-                          <span>{message.content}</span>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        {message.role === 'assistant' && message.status === 'loading' && (
+                          <Loader2 size={16} className="animate-spin text-slate-500" />
+                        )}
+                        <span>{message.content}</span>
                       </div>
+                    </div>
+                    {message.language && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] uppercase tracking-wide border-slate-200 text-slate-600 w-fit"
+                      >
+                        {LANGUAGE_LABELS[message.language]}
+                      </Badge>
+                    )}
 
                       {message.sentiment && sentimentVisual && (
                         <div className="mt-3 space-y-1">
@@ -600,13 +620,38 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
         {/* Input Area */}
         <div className="border-t border-slate-200 p-4 bg-white">
           <div className="max-w-3xl mx-auto">
+            <div className="flex flex-col gap-2 mb-4 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                Conversation language
+              </span>
+              <div className="flex gap-2">
+                {(['english', 'tunisian'] as SupportedLanguage[]).map(option => (
+                  <Button
+                    key={option}
+                    type="button"
+                    variant={selectedLanguage === option ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedLanguage(option)}
+                    className={selectedLanguage === option ? 'bg-blue-600 hover:bg-blue-700' : 'border-slate-300'}
+                  >
+                    {LANGUAGE_LABELS[option]}
+                  </Button>
+                ))}
+              </div>
+            </div>
             {/* THIS IS THE MODIFIED SECTION */}
             <div className="flex space-x-2">
               <Input
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !isSending && handleSendMessage()}
-                placeholder={isListening ? "Listening..." : "Ask about the latest news..."}
+                placeholder={
+                  isListening
+                    ? 'Listening...'
+                    : selectedLanguage === 'tunisian'
+                      ? 'احكي مع بريفيلي بالدارجة...'
+                      : 'Ask about the latest news...'
+                }
                 className="flex-1 border-slate-300"
                 disabled={isSending}
               />
@@ -695,3 +740,11 @@ export function ChatbotPage({ onNavigate }: ChatbotPageProps) {
     </div>
   );
 }
+
+
+
+
+
+
+
+

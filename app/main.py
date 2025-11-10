@@ -11,6 +11,7 @@ from langchain_ollama import OllamaLLM
 
 # Import the pre-loaded vector_store instance from our service
 from .services.vector_store import vector_store
+from .services.tunibert_responder import TuniBertResponder
 
 # Load environment variables from .env file
 load_dotenv()
@@ -19,6 +20,10 @@ load_dotenv()
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, description="The question to ask the RAG agent.")
     category: str = Field("All", description="Optional: The category to filter the search by.")
+    language: str = Field(
+        "english",
+        description="english or tunisian",
+    )
 
 class AskResponse(BaseModel):
     answer: str
@@ -68,9 +73,11 @@ try:
         return_source_documents=True
     )
     print('[INFO] RAG Chain initialized successfully.')
+    tunisian_responder = TuniBertResponder()
 except Exception as e:
     print(f"[ERROR] Error during RAG Chain initialization: {e}")
     rag_chain = None
+    tunisian_responder = None
 
 # --- API Endpoints ---
 @app.get("/", tags=["Health Check"])
@@ -82,24 +89,42 @@ async def ask(request: AskRequest):
     """
     Receives a question and an optional category, returns a factual answer based on the knowledge base.
     """
-    if not rag_chain:
-        raise HTTPException(status_code=500, detail="RAG chain is not initialized. Check server logs.")
+    language = (request.language or "english").lower()
+    if language not in {"english", "tunisian"}:
+        raise HTTPException(status_code=400, detail="Unsupported language provided.")
 
-    print(f"Received query: '{request.question}' | Category: '{request.category}'")
+    print(f"Received query: '{request.question}' | Category: '{request.category}' | Language: '{language}'")
+
+    search_kwargs = {"k": 3}
+    if request.category != "All":
+        search_kwargs["filter"] = {"category": request.category}
 
     try:
-        # --- Metadata Filtering Logic ---
-        search_kwargs = {"k": 3}
-        if request.category != "All":
-            search_kwargs["filter"] = {"category": request.category}
+        retriever = vector_store.as_retriever(search_kwargs=search_kwargs)
+        documents = retriever.get_relevant_documents(request.question)
 
-        # Dynamically update the retriever for this query
-        rag_chain.retriever = vector_store.as_retriever(search_kwargs=search_kwargs)
+        if language == "tunisian":
+            if not tunisian_responder:
+                raise HTTPException(status_code=500, detail="TuniBert responder is unavailable.")
 
-        # Invoke the chain
+            selected_doc = tunisian_responder.select_document(request.question, documents)
+            if not selected_doc:
+                raise HTTPException(status_code=404, detail="ملاقيتش معلومة مطابقة في الوقت الحالي.")
+
+            answer = tunisian_responder.format_answer(selected_doc)
+            sources = [
+                {
+                    "title": selected_doc.metadata.get("title", "N/A"),
+                    "link": selected_doc.metadata.get("link", "N/A")
+                }
+            ]
+            return {"answer": answer, "sources": sources}
+
+        if not rag_chain:
+            raise HTTPException(status_code=500, detail="RAG chain is not initialized. Check server logs.")
+
+        rag_chain.retriever = retriever
         result = rag_chain.invoke(request.question)
-
-        # Prepare the sources for the response
         sources = [
             {
                 "title": doc.metadata.get("title", "N/A"),
@@ -107,9 +132,10 @@ async def ask(request: AskRequest):
             }
             for doc in result.get("source_documents", [])
         ]
-
         return {"answer": result["result"], "sources": sources}
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] Error during query invocation: {e}")
         raise HTTPException(status_code=500, detail=str(e))

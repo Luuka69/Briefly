@@ -28,6 +28,12 @@ Stop the stack with `./scripts/dev.sh down` or `.\scripts\dev.ps1 down`.
 - The backend now exposes `POST /sentiment/analyze` for lightweight tone scoring using the `sentiment` npm package. Send `{ "text": "..." }` and the API responds with the label (`positive`, `neutral`, or `negative`), score, comparative value, and contributing tokens.
 - The chatbot UI automatically calls this endpoint for every user and assistant message, surfacing a badge, score, and highlighted keywords so you can gauge the tone of each exchange at a glance.
 
+## Multilingual Chatting
+
+- The chatbot now includes an English/Tunisian toggle. English conversations keep using the Mistral model hosted on Ollama, while Tunisian prompts are routed to the AhmedBou/TuniBert model from Hugging Face for dialect-aware understanding.
+- The Express API forwards a `language` flag to the Python RAG service. The Python layer selects the right chain: RetrievalQA + Mistral for English, or the TuniBert-powered retriever for Tunisian, and returns language-tagged responses.
+- Configure the Tunisian model via `TUNISIAN_MODEL_NAME` in `.env` (defaults to `AhmedBou/TuniBert`).
+
 ## Pipelines & Models
 
 Extend `docker-compose.yml` with additional services (scrapers, model servers, etc.). Sample blocks are commented in the file—duplicate and adjust them to point at your pipeline repositories or container images.
